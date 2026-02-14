@@ -15,26 +15,26 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET! // هاد الساروت غنجيبوه دابا
+      process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (error: any) {
     console.error("Webhook Error:", error.message);
     return new NextResponse(`Webhook Error: ${error.message}`, { status: 400 });
   }
 
-  const session = event.data.object as Stripe.Checkout.Session;
-
   // فاش الكليان كيخلص لأول مرة
   if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    
+    // هنا فين فرضنا على TypeScript تعرفها بلي ديال Stripe
     const subscription = await stripe.subscriptions.retrieve(
       session.subscription as string
-    );
+    ) as Stripe.Subscription; 
 
     if (!session?.metadata?.userId) {
       return new NextResponse("User id is required", { status: 400 });
     }
 
-    // كنحدثو قاعدة البيانات باش نردوه Pro
     await db.user.update({
       where: {
         id: session.metadata.userId,
@@ -52,9 +52,12 @@ export async function POST(req: Request) {
 
   // فاش كيخلص التجديد ديال الشهر لي موراه
   if (event.type === "invoice.payment_succeeded") {
+    // التجديد كيكون Invoice ماشي Session
+    const invoice = event.data.object as Stripe.Invoice; 
+    
     const subscription = await stripe.subscriptions.retrieve(
-      session.subscription as string
-    );
+      invoice.subscription as string
+    ) as Stripe.Subscription;
 
     await db.user.update({
       where: {
