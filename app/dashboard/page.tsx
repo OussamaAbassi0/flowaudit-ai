@@ -1,28 +1,37 @@
 // app/dashboard/page.tsx — Server Component
-// Fetches real audit stats from DB for the current Clerk user.
 
 import { auth } from "@clerk/nextjs/server";
 import { currentUser } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { SubscriptionButton } from "./subscription-button"; // <-- ها حنا استوردناه
+import { SubscriptionButton } from "./subscription-button";
 
 export default async function DashboardPage() {
   const { userId: clerkId } = await auth();
   const user = await currentUser();
 
-  // Fetch DB user + audit count (gracefully handles missing user)
   let auditCount = 0;
   let recentAudits: { id: string; originalInput: string; createdAt: Date }[] = [];
+  let isPro = false;
 
   if (clerkId) {
     const dbUser = await db.user.findUnique({
       where: { clerkId },
-      select: { id: true, _count: { select: { audits: true } } },
+      select: {
+        id: true,
+        stripeCurrentPeriodEnd: true,
+        _count: { select: { audits: true } },
+      },
     });
 
     if (dbUser) {
       auditCount = dbUser._count.audits;
+
+      // Pro = has an active subscription that hasn't expired
+      isPro =
+        !!dbUser.stripeCurrentPeriodEnd &&
+        dbUser.stripeCurrentPeriodEnd.getTime() > Date.now();
+
       recentAudits = await db.audit.findMany({
         where: { userId: dbUser.id },
         orderBy: { createdAt: "desc" },
@@ -66,9 +75,9 @@ export default async function DashboardPage() {
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "16px", marginBottom: "32px" }}>
         {[
-          { label: "Total Audits",        value: String(auditCount),      color: "#00c3ff" },
-          { label: "Hours Saved (est.)",  value: `${hoursSaved}h`,        color: "#22c97a" },
-          { label: "Workflows Generated", value: String(auditCount),      color: "#f59e0b" },
+          { label: "Total Audits",        value: String(auditCount), color: "#00c3ff" },
+          { label: "Hours Saved (est.)",  value: `${hoursSaved}h`,   color: "#22c97a" },
+          { label: "Workflows Generated", value: String(auditCount), color: "#f59e0b" },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ background: "#0d0f17", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "12px", padding: "20px" }}>
             <div style={{ fontSize: "26px", fontWeight: 700, color: "#fff", marginBottom: "4px" }}>{value}</div>
@@ -78,31 +87,54 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {/* 🚀 Pro Upgrade Banner (Stripe) 🚀 */}
-      <div style={{ 
-        marginBottom: "32px", 
-        padding: "24px", 
-        background: "linear-gradient(145deg, rgba(99,102,241,0.08) 0%, rgba(168,85,247,0.08) 100%)", 
-        border: "1px solid rgba(168,85,247,0.25)", 
-        borderRadius: "14px", 
-        display: "flex", 
-        alignItems: "center", 
-        justifyContent: "space-between",
-        flexWrap: "wrap",
-        gap: "16px"
-      }}>
-        <div>
-          <h2 style={{ fontSize: "18px", fontWeight: 700, color: "#fff", marginBottom: "6px" }}>
-            Unlock Unlimited Audits
-          </h2>
-          <p style={{ fontSize: "13.5px", color: "#a5a8b5" }}>
-            Upgrade to FlowAudit Pro to generate unlimited AI-powered workflows.
-          </p>
+      {/* Pro banner — shows different UI depending on subscription status */}
+      {isPro ? (
+        // ── ACTIVE PRO ──
+        <div style={{
+          marginBottom: "32px", padding: "20px 24px",
+          background: "linear-gradient(135deg, rgba(34,201,122,0.08), rgba(0,195,255,0.06))",
+          border: "1px solid rgba(34,201,122,0.25)", borderRadius: "14px",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ width: "36px", height: "36px", background: "rgba(34,201,122,0.15)", borderRadius: "9px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+              ✦
+            </div>
+            <div>
+              <div style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "2px" }}>
+                FlowAudit Pro — Active
+              </div>
+              <div style={{ fontSize: "12.5px", color: "#22c97a" }}>
+                Unlimited audits · Full n8n workflow export
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize: "11.5px", color: "#5a6070", textAlign: "right", flexShrink: 0 }}>
+            ✓ Subscribed
+          </div>
         </div>
-        <div style={{ minWidth: "160px" }}>
-          <SubscriptionButton />
+      ) : (
+        // ── FREE TIER / UPGRADE PROMPT ──
+        <div style={{
+          marginBottom: "32px", padding: "24px",
+          background: "linear-gradient(145deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))",
+          border: "1px solid rgba(168,85,247,0.25)", borderRadius: "14px",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          flexWrap: "wrap", gap: "16px",
+        }}>
+          <div>
+            <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#fff", marginBottom: "6px" }}>
+              Unlock Unlimited Audits
+            </h2>
+            <p style={{ fontSize: "13px", color: "#a5a8b5" }}>
+              Upgrade to FlowAudit Pro to generate unlimited AI-powered workflows.
+            </p>
+          </div>
+          <div style={{ minWidth: "160px" }}>
+            <SubscriptionButton isPro={false} />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* CTA */}
       <Link href="/dashboard/audit" className="cta-card" style={{ marginBottom: "32px", display: "flex" }}>
