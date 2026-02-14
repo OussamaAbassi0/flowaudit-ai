@@ -9,6 +9,8 @@ import { db } from "@/lib/db";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+const MAX_FREE_AUDITS = 3; // شحال من محاولة فابور بغينا نعطيو
+
 const SYSTEM_PROMPT = `You are FlowAudit AI, a world-class n8n Automation Architect and Business Process Analyst.
 
 Analyze the described manual business process and return ONLY valid JSON (no markdown, no explanation, just raw JSON).
@@ -110,21 +112,41 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 3. Upsert user in DB ───────────────────────────────────
-    // This replaces the Clerk webhook for localhost dev.
-    // On production the webhook will keep the user in sync,
-    // but this upsert ensures the user always exists before saving an audit.
     const clerkUser = await currentUser();
     const email = clerkUser?.emailAddresses?.[0]?.emailAddress ?? `${clerkId}@unknown.com`;
 
     const dbUser = await db.user.upsert({
       where: { clerkId },
-      update: { email }, // keep email fresh if it changed
+      update: { email },
       create: { clerkId, email },
     });
 
-    // ── 4. Call OpenAI ─────────────────────────────────────────
+    // ── 4. 🚨 BUSINESS LOGIC: CHECK FREE TIER vs PRO 🚨 ──────────
+    // كنجيبو شحال من Audit ديجا صاوب هاد الكليان
+    const userAuditsCount = await db.audit.count({
+      where: { userId: dbUser.id }
+    });
+
+    // كنتأكدو واش عندو اشتراك Pro صالح (تاريخ النهاية باقي ماوصلش)
+    const isPro = dbUser.stripePriceId && 
+                  dbUser.stripeCurrentPeriodEnd && 
+                  dbUser.stripeCurrentPeriodEnd.getTime() > Date.now();
+
+    // يلا ماكانش Pro، وفات 3 دالمحاولات الفابور، كنحبسوه!
+    if (!isPro && userAuditsCount >= MAX_FREE_AUDITS) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "You have reached your limit of free audits. Please upgrade to Pro to generate more.",
+          requiresUpgrade: true // هادي غنستعملوها فالفرونتاند باش نطلعو ليه البوب-أب ديال الدفع
+        },
+        { status: 403 }
+      );
+    }
+
+    // ── 5. Call OpenAI ─────────────────────────────────────────
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: isPro ? "gpt-4o" : "gpt-4o-mini", // يلا كان برو نعطيوه الذكاء الواعر، يلا فابور نعطيوه الميني باش نقتصضو الفلوس
       temperature: 0.3,
       max_tokens: 4096,
       response_format: { type: "json_object" },
@@ -152,7 +174,7 @@ export async function POST(req: NextRequest) {
       throw new Error("AI response missing required fields");
     }
 
-    // ── 5. Save audit to database ──────────────────────────────
+    // ── 6. Save audit to database ──────────────────────────────
     const audit = await db.audit.create({
       data: {
         userId:          dbUser.id,
@@ -162,9 +184,9 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    console.log(`✅ Audit saved: ${audit.id} for user ${dbUser.email}`);
+    console.log(`✅ Audit saved: ${audit.id} for user ${dbUser.email}. Total Audits: ${userAuditsCount + 1}`);
 
-    // ── 6. Return result ───────────────────────────────────────
+    // ── 7. Return result ───────────────────────────────────────
     return NextResponse.json({
       success: true,
       data: {
