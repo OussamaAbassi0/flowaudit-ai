@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { db } from "../../../../lib/db"; 
-import { stripe } from "../../../../lib/stripe"; // ها حنا استعملناه، دابا غيولي لونو عادي!
+import { db } from "@/lib/db"; 
+import { stripe } from "@/lib/stripe";
 
 export async function POST(req: Request) {
   try {
