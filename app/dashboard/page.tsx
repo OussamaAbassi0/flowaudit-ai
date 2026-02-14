@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { currentUser } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { SubscriptionButton } from "./subscription-button"; // <-- ها حنا استوردناه
 
 export default async function DashboardPage() {
   const { userId: clerkId } = await auth();
@@ -75,6 +76,32 @@ export default async function DashboardPage() {
             <div style={{ height: "2px", background: color, borderRadius: "2px", marginTop: "12px", opacity: 0.4, width: "40px" }} />
           </div>
         ))}
+      </div>
+
+      {/* 🚀 Pro Upgrade Banner (Stripe) 🚀 */}
+      <div style={{ 
+        marginBottom: "32px", 
+        padding: "24px", 
+        background: "linear-gradient(145deg, rgba(99,102,241,0.08) 0%, rgba(168,85,247,0.08) 100%)", 
+        border: "1px solid rgba(168,85,247,0.25)", 
+        borderRadius: "14px", 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+        gap: "16px"
+      }}>
+        <div>
+          <h2 style={{ fontSize: "18px", fontWeight: 700, color: "#fff", marginBottom: "6px" }}>
+            Unlock Unlimited Audits
+          </h2>
+          <p style={{ fontSize: "13.5px", color: "#a5a8b5" }}>
+            Upgrade to FlowAudit Pro to generate unlimited AI-powered workflows.
+          </p>
+        </div>
+        <div style={{ minWidth: "160px" }}>
+          <SubscriptionButton />
+        </div>
       </div>
 
       {/* CTA */}
