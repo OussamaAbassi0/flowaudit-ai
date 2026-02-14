@@ -58,8 +58,17 @@ export async function POST(req: Request) {
   if (event.type === "invoice.payment_succeeded") {
     const invoice = event.data.object as Stripe.Invoice;
 
+    const subscriptionId =
+      (invoice as any).subscription ??
+      (invoice.parent as any)?.subscription_details?.subscription_id ??
+      (invoice.parent as any)?.id;
+
+    if (!subscriptionId) {
+      return new NextResponse("No subscription found on invoice", { status: 400 });
+    }
+
     const subscription = await stripe.subscriptions.retrieve(
-      invoice.subscription as string
+      subscriptionId as string
     ) as Stripe.Subscription;
 
     await db.user.update({
