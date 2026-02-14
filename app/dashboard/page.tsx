@@ -109,8 +109,8 @@ export default async function DashboardPage() {
               </div>
             </div>
           </div>
-          <div style={{ fontSize: "11.5px", color: "#5a6070", textAlign: "right", flexShrink: 0 }}>
-            ✓ Subscribed
+          <div style={{ flexShrink: 0 }}>
+            <SubscriptionButton isPro={true} />
           </div>
         </div>
       ) : (

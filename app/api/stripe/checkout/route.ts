@@ -1,40 +1,40 @@
+// app/api/stripe/checkout/route.ts
+
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db"; 
+import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 
-export async function POST(req: Request) {
+export async function POST() {
   try {
     const { userId } = await auth();
     if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
-    // كنجيبو المعلومات ديال الكليان من قاعدة البيانات ديالنا
     const user = await db.user.findUnique({
       where: { clerkId: userId },
+      select: { id: true, email: true, stripeCustomerId: true },
     });
 
     if (!user) return new NextResponse("User not found", { status: 404 });
 
-    // كنصاوبو ليه جلسة ديال الدفع فـ Stripe
     const session = await stripe.checkout.sessions.create({
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?canceled=true`,
+      cancel_url:  `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?canceled=true`,
       payment_method_types: ["card"],
       mode: "subscription",
       billing_address_collection: "auto",
-      customer_email: user.email, // باش يطلع الإيميل ديالو واجد فصفحة الدفع
+      // Reuse existing Stripe customer if they've paid before,
+      // otherwise prefill their email on the checkout form.
+      ...(user.stripeCustomerId
+        ? { customer: user.stripeCustomerId }
+        : { customer_email: user.email }
+      ),
       line_items: [
-        {
-          price: process.env.STRIPE_PRO_PRICE_ID, // داك الكود لي جبتي قبيلة
-          quantity: 1,
-        },
+        { price: process.env.STRIPE_PRO_PRICE_ID!, quantity: 1 },
       ],
-      metadata: {
-        userId: user.id, // هادي مهمة بزاف باش ملي يخلص نعرفو شكون هو
-      },
+      metadata: { userId: user.id },
     });
 
-    // كنرجعو الرابط ديال الدفع للفرونتاند
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("STRIPE_CHECKOUT_ERROR", error);
